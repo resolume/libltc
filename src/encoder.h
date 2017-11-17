@@ -23,7 +23,8 @@
 #define SAMPLE_CENTER 128 // unsigned 8 bit.
 #endif
 
-struct LTCEncoder {
+struct SMPTELIB_API LTCEncoder
+{
 	double fps;
 	double sample_rate;
 	double filter_const;

@@ -31,7 +31,8 @@
  * Decoder
  */
 
-LTCDecoder* ltc_decoder_create(int apv, int queue_len) {
+SMPTELIB_API LTCDecoder* ltc_decoder_create( int apv, int queue_len )
+{
 	LTCDecoder* d = (LTCDecoder*) calloc(1, sizeof(LTCDecoder));
 	if (!d) return NULL;
 
@@ -53,7 +54,68 @@ LTCDecoder* ltc_decoder_create(int apv, int queue_len) {
 	return d;
 }
 
-int ltc_decoder_free(LTCDecoder *d) {
+SMPTELIB_API int ltc_decoder_load(LTCDecoder *d, const unsigned char *buffer, int *buffersize, int includeQueue)
+{
+	size_t size = sizeof(LTCDecoder) + (includeQueue != 0 ? (d->queue_len * sizeof(LTCFrameExt)) : 0 );
+	
+	if(*buffersize < size)
+	{
+		*buffersize = size;
+		return -1;
+	}
+	
+	// decoder queue pointer will be overwritten, so copy it first
+	LTCFrameExt *queue = d->queue;
+	*d = *(const LTCDecoder*)buffer; // copy over decoder
+	d->queue = queue; // copy back original queue pointer
+	
+	// copy back queue
+	if(includeQueue)
+		memcpy(d->queue, buffer + sizeof(LTCDecoder), d->queue_len * sizeof(LTCFrameExt)); // copy queue from buffer
+	
+	// flush queue
+	else
+		ltc_decoder_queue_flush(d);
+	
+	*buffersize = size;
+	return *buffersize;
+}
+
+SMPTELIB_API int ltc_decoder_save(LTCDecoder *d, unsigned char *buffer, int *buffersize, int includeQueue)
+{
+	size_t size = sizeof(LTCDecoder) + (includeQueue != 0 ? (d->queue_len * sizeof(LTCFrameExt)) : 0 );
+	if(*buffersize < size)
+	{
+		*buffersize = size;
+		return -1;
+	}
+	
+	// copy decoder to buffer
+	memcpy(buffer, d, sizeof(LTCDecoder));
+	
+	// copy queue if needed
+	if(includeQueue)
+		memcpy(buffer + sizeof(LTCDecoder), d->queue, d->queue_len * sizeof(LTCFrameExt));
+	
+	*buffersize = size;
+	return *buffersize;
+}
+
+SMPTELIB_API void SMPTELIB_API ltc_decoder_reset( LTCDecoder *d, int apv )
+{
+	d->biphase_state = 1;
+	d->snd_to_biphase_period = apv / 80;
+	d->snd_to_biphase_lmt = (d->snd_to_biphase_period * 3) / 4;
+
+	d->snd_to_biphase_min = SAMPLE_CENTER;
+	d->snd_to_biphase_max = SAMPLE_CENTER;
+	d->frame_start_prev = -1;
+	d->biphase_tic = 0;
+}
+
+
+SMPTELIB_API int ltc_decoder_free( LTCDecoder *d )
+{
 	if (!d) return 1;
 	if (d->queue) free(d->queue);
 	free(d);
@@ -61,14 +123,15 @@ int ltc_decoder_free(LTCDecoder *d) {
 	return 0;
 }
 
-void ltc_decoder_write(LTCDecoder *d, ltcsnd_sample_t *buf, size_t size, ltc_off_t posinfo) {
+SMPTELIB_API void ltc_decoder_write( LTCDecoder *d, ltcsnd_sample_t *buf, size_t size, ltc_off_t posinfo )
+{
 	decode_ltc(d, buf, size, posinfo);
 }
 
 #define LTC_CONVERSION_BUF_SIZE 1024
 
 #define LTCWRITE_TEMPLATE(FN, FORMAT, CONV) \
-void ltc_decoder_write_ ## FN (LTCDecoder *d, FORMAT *buf, size_t size, ltc_off_t posinfo) { \
+SMPTELIB_API void ltc_decoder_write_ ## FN (LTCDecoder *d, FORMAT *buf, size_t size, ltc_off_t posinfo) { \
 	ltcsnd_sample_t tmp[LTC_CONVERSION_BUF_SIZE]; \
 	size_t copyStart = 0; \
 	while (copyStart < size) { \
@@ -91,7 +154,8 @@ LTCWRITE_TEMPLATE(u16, unsigned short, (buf[copyStart+i] >> 8))
 
 #undef LTC_CONVERSION_BUF_SIZE
 
-int ltc_decoder_read(LTCDecoder* d, LTCFrameExt* frame) {
+SMPTELIB_API int ltc_decoder_read( LTCDecoder* d, LTCFrameExt* frame )
+{
 	if (!frame) return -1;
 	if (d->queue_read_off != d->queue_write_off) {
 		memcpy(frame, &d->queue[d->queue_read_off], sizeof(LTCFrameExt));
@@ -103,7 +167,8 @@ int ltc_decoder_read(LTCDecoder* d, LTCFrameExt* frame) {
 	return 0;
 }
 
-void ltc_decoder_queue_flush(LTCDecoder* d) {
+SMPTELIB_API void ltc_decoder_queue_flush( LTCDecoder* d )
+{
 	while (d->queue_read_off != d->queue_write_off) {
 		d->queue_read_off++;
 		if (d->queue_read_off == d->queue_len)
@@ -111,7 +176,8 @@ void ltc_decoder_queue_flush(LTCDecoder* d) {
 	}
 }
 
-int ltc_decoder_queue_length(LTCDecoder* d) {
+SMPTELIB_API int ltc_decoder_queue_length( LTCDecoder* d )
+{
 	return (d->queue_write_off - d->queue_read_off + d->queue_len) % d->queue_len;
 }
 
@@ -119,7 +185,8 @@ int ltc_decoder_queue_length(LTCDecoder* d) {
  * Encoder
  */
 
-LTCEncoder* ltc_encoder_create(double sample_rate, double fps, enum LTC_TV_STANDARD standard, int flags) {
+SMPTELIB_API LTCEncoder* ltc_encoder_create( double sample_rate, double fps, enum LTC_TV_STANDARD standard, int flags )
+{
 	if (sample_rate < 1)
 		return NULL;
 
@@ -143,13 +210,15 @@ LTCEncoder* ltc_encoder_create(double sample_rate, double fps, enum LTC_TV_STAND
 	return e;
 }
 
-void ltc_encoder_free(LTCEncoder *e) {
+SMPTELIB_API void ltc_encoder_free( LTCEncoder *e )
+{
 	if (!e) return;
 	if (e->buf) free(e->buf);
 	free(e);
 }
 
-int ltc_encoder_reinit(LTCEncoder *e, double sample_rate, double fps, enum LTC_TV_STANDARD standard, int flags) {
+SMPTELIB_API int ltc_encoder_reinit( LTCEncoder *e, double sample_rate, double fps, enum LTC_TV_STANDARD standard, int flags )
+{
 	if (sample_rate < 1)
 		return -1;
 
@@ -198,13 +267,15 @@ int ltc_encoder_reinit(LTCEncoder *e, double sample_rate, double fps, enum LTC_T
 	return 0;
 }
 
-void ltc_encoder_reset(LTCEncoder *e) {
+SMPTELIB_API void ltc_encoder_reset( LTCEncoder *e )
+{
 	e->state = 0;
 	e->sample_remainder = 0.5;
 	e->offset = 0;
 }
 
-int ltc_encoder_set_volume(LTCEncoder *e, double dBFS) {
+SMPTELIB_API int ltc_encoder_set_volume( LTCEncoder *e, double dBFS )
+{
 	if (dBFS > 0)
 		return -1;
 	double pp = rint(127.0 * pow(10, dBFS/20.0));
@@ -216,7 +287,8 @@ int ltc_encoder_set_volume(LTCEncoder *e, double dBFS) {
 	return 0;
 }
 
-void ltc_encoder_set_filter(LTCEncoder *e, double rise_time) {
+SMPTELIB_API void ltc_encoder_set_filter( LTCEncoder *e, double rise_time )
+{
 	/* low-pass-filter
 	 * LTC signal should have a rise time of 40 us +/- 10 us.
 	 *
@@ -231,7 +303,8 @@ void ltc_encoder_set_filter(LTCEncoder *e, double rise_time) {
 		e->filter_const = 1.0 - exp( -1.0 / (e->sample_rate * rise_time / 2000000.0 / exp(1.0)) );
 }
 
-int ltc_encoder_set_bufsize(LTCEncoder *e, double sample_rate, double fps) {
+SMPTELIB_API int ltc_encoder_set_bufsize( LTCEncoder *e, double sample_rate, double fps )
+{
 	free (e->buf);
 	e->offset = 0;
 	e->bufsize = 1 + ceil(sample_rate / fps);
@@ -242,63 +315,76 @@ int ltc_encoder_set_bufsize(LTCEncoder *e, double sample_rate, double fps) {
 	return 0;
 }
 
-int ltc_encoder_encode_byte(LTCEncoder *e, int byte, double speed) {
+SMPTELIB_API int ltc_encoder_encode_byte( LTCEncoder *e, int byte, double speed )
+{
 	return encode_byte(e, byte, speed);
 }
 
-void ltc_encoder_encode_frame(LTCEncoder *e) {
+SMPTELIB_API void ltc_encoder_encode_frame( LTCEncoder *e )
+{
 	int byte;
 	for (byte = 0 ; byte < 10 ; byte++) {
 		encode_byte(e, byte, 1.0);
 	}
 }
 
-void ltc_encoder_get_timecode(LTCEncoder *e, SMPTETimecode *t) {
+SMPTELIB_API void ltc_encoder_get_timecode( LTCEncoder *e, SMPTETimecode *t )
+{
 	ltc_frame_to_time(t, &e->f, e->flags);
 }
 
-void ltc_encoder_set_timecode(LTCEncoder *e, SMPTETimecode *t) {
+SMPTELIB_API void ltc_encoder_set_timecode( LTCEncoder *e, SMPTETimecode *t )
+{
 	ltc_time_to_frame(&e->f, t, e->standard, e->flags);
 }
 
-void ltc_encoder_get_frame(LTCEncoder *e, LTCFrame *f) {
+SMPTELIB_API void ltc_encoder_get_frame( LTCEncoder *e, LTCFrame *f )
+{
 	memcpy(f, &e->f, sizeof(LTCFrame));
 }
 
-void ltc_encoder_set_frame(LTCEncoder *e, LTCFrame *f) {
+SMPTELIB_API void ltc_encoder_set_frame( LTCEncoder *e, LTCFrame *f )
+{
 	memcpy(&e->f, f, sizeof(LTCFrame));
 }
 
-int ltc_encoder_inc_timecode(LTCEncoder *e) {
+SMPTELIB_API int ltc_encoder_inc_timecode( LTCEncoder *e )
+{
 	return ltc_frame_increment (&e->f, rint(e->fps), e->standard, e->flags);
 }
 
-int ltc_encoder_dec_timecode(LTCEncoder *e) {
+SMPTELIB_API int ltc_encoder_dec_timecode( LTCEncoder *e )
+{
 	return ltc_frame_decrement (&e->f, rint(e->fps), e->standard, e->flags);
 }
 
-size_t ltc_encoder_get_buffersize(LTCEncoder *e) {
+SMPTELIB_API size_t ltc_encoder_get_buffersize( LTCEncoder *e )
+{
 	return(e->bufsize);
 }
 
-void ltc_encoder_buffer_flush(LTCEncoder *e) {
+SMPTELIB_API void ltc_encoder_buffer_flush( LTCEncoder *e )
+{
 	e->offset = 0;
 }
 
-ltcsnd_sample_t *ltc_encoder_get_bufptr(LTCEncoder *e, int *size, int flush) {
+SMPTELIB_API ltcsnd_sample_t *ltc_encoder_get_bufptr( LTCEncoder *e, int *size, int flush )
+{
 	if (size) *size = e->offset;
 	if (flush) e->offset = 0;
 	return e->buf;
 }
 
-int ltc_encoder_get_buffer(LTCEncoder *e, ltcsnd_sample_t *buf) {
+SMPTELIB_API int ltc_encoder_get_buffer( LTCEncoder *e, ltcsnd_sample_t *buf )
+{
 	const int len = e->offset;
 	memcpy(buf, e->buf, len * sizeof(ltcsnd_sample_t) );
 	e->offset = 0;
 	return(len);
 }
 
-void ltc_frame_set_parity(LTCFrame *frame, enum LTC_TV_STANDARD standard) {
+SMPTELIB_API void ltc_frame_set_parity( LTCFrame *frame, enum LTC_TV_STANDARD standard )
+{
 	int i;
 	unsigned char p = 0;
 
@@ -322,7 +408,8 @@ void ltc_frame_set_parity(LTCFrame *frame, enum LTC_TV_STANDARD standard) {
 	}
 }
 
-ltc_off_t ltc_frame_alignment(double samples_per_frame, enum LTC_TV_STANDARD standard) {
+SMPTELIB_API ltc_off_t ltc_frame_alignment( double samples_per_frame, enum LTC_TV_STANDARD standard )
+{
 	switch (standard) {
 		case LTC_TV_525_60:
 			return rint(samples_per_frame * 4.0 / 525.0);

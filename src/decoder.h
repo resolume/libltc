@@ -23,7 +23,8 @@
 #define SAMPLE_CENTER 128 // unsigned 8 bit.
 #endif
 
-struct LTCDecoder {
+struct SMPTELIB_API LTCDecoder
+{
 	LTCFrameExt* queue;
 	int queue_len;
 	int queue_read_off;
