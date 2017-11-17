@@ -10,8 +10,8 @@
     </Link>
     <CustomBuildStep>
       <Command>echo Copy libltc library
-xcopy /D /Y $(MSBuildThisFileDirectory)bin\$(PlatformTarget)\libltc.dll $(TargetDir)
-xcopy /D /Y $(MSBuildThisFileDirectory)bin\$(PlatformTarget)\libltc.pdb $(TargetDir)
+xcopy /D /Y "$(MSBuildThisFileDirectory)bin\$(PlatformTarget)\libltc.dll" "$(TargetDir)"
+xcopy /D /Y "$(MSBuildThisFileDirectory)bin\$(PlatformTarget)\libltc.pdb" "$(TargetDir)"
 %(Command)</Command>
     </CustomBuildStep>
     <CustomBuildStep>
