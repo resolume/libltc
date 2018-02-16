@@ -8,7 +8,7 @@
     <Link>
       <AdditionalDependencies>$(MSBuildThisFileDirectory)bin\$(PlatformTarget)\libltcd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <CustomBuildStep>
+    <CustomBuildStep Condition="'$(ConfigurationType)'=='Application'">
       <Command>rem IncrediBuild_AllowOverlap
 echo Copy libltc library
 xcopy /D /Y "$(MSBuildThisFileDirectory)bin\$(PlatformTarget)\libltcd.pdb" "$(TargetDir)"
